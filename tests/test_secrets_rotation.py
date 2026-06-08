@@ -1,4 +1,7 @@
-from devops_toolkit.secrets_rotation import find_dependent_deployments, plan_rotation
+import json
+from unittest.mock import patch
+
+from devops_toolkit.secrets_rotation import find_dependent_deployments, plan_rotation, rotate_secret
 
 
 def _deployment(name, namespace="default", secret_refs=(), secret_key_refs=()):
@@ -60,3 +63,41 @@ def test_plan_rotation_picks_synthetic_canary_when_none_marked():
     single = plan_rotation("db-creds", [_deployment("solo", secret_refs=["db-creds"])])
     assert len(single.waves) == 1
     assert single.waves[0].deployments == ["default/solo"]
+
+
+def test_rotate_secret_dry_run_only_reads_never_writes():
+    empty_deployments = json.dumps({"items": []})
+    with patch("devops_toolkit.secrets_rotation._run", return_value=empty_deployments) as mock_run:
+        plan = rotate_secret("unused-secret", "default", {"value": "new"}, dry_run=True)
+
+    assert plan.waves == []
+    # dry_run must never call kubectl patch/rollout -- only the initial
+    # "get deployments" read used to build the plan.
+    mock_run.assert_called_once()
+
+
+def test_rotate_secret_patches_full_key_map_not_a_single_hardcoded_key():
+    # Regression test: an earlier version of rotate_secret hardcoded
+    # `stringData: {"value": new_value}`, which silently broke for any
+    # Secret with more than one key. This confirms an arbitrary
+    # {key: value} map round-trips into the kubectl patch payload as-is.
+    empty_deployments = json.dumps({"items": []})
+    calls = []
+
+    def fake_run(*args):
+        calls.append(args)
+        return empty_deployments
+
+    with patch("devops_toolkit.secrets_rotation._run", side_effect=fake_run):
+        rotate_secret(
+            "db-creds",
+            "default",
+            {"username": "svc-account", "password": "s3cr3t-value"},
+            dry_run=False,
+        )
+
+    patch_call = next(c for c in calls if "patch" in c)
+    payload = json.loads(patch_call[-1])
+    assert payload == {
+        "stringData": {"username": "svc-account", "password": "s3cr3t-value"}
+    }

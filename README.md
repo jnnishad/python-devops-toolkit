@@ -61,6 +61,9 @@ devops-toolkit drift-check production deploy-web.json deploy-worker.json
 # Plan (dry-run) a canary-first, wave-based secret rotation
 devops-toolkit rotate-secret db-creds production --aws-secret-id prod/db-creds
 
+# Same, but for a multi-key credential secret (username + password)
+devops-toolkit rotate-secret db-creds production --set username=svc-account --set password=hunter2
+
 # Pick (but don't kill, unless --execute) one safe pod for a chaos experiment
 devops-toolkit chaos-kill --selector app=web --namespaces production --min-replicas 3
 ```
@@ -122,3 +125,7 @@ tests/
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+<!-- JN -->
+
+<!-- JN -->

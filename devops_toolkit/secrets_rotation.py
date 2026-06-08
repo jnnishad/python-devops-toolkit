@@ -10,7 +10,9 @@ down one deployment's worth of pods instead of every consumer at once.
 
 `plan_rotation` (dependency discovery + wave ordering) is pure and unit
 tested against plain dicts. `rotate_secret` is the thin AWS/kubectl-backed
-wrapper that executes the plan against a real account and cluster.
+wrapper that executes the plan against a real account and cluster,
+taking a full {key: value} map so it works for multi-key Secrets, not
+just single-value ones.
 """
 
 from __future__ import annotations
@@ -107,8 +109,9 @@ def plan_rotation(
 def rotate_secret(
     secret_name: str,
     namespace: str,
-    new_value: str,
+    new_values: dict[str, str],
     aws_secret_id: str | None = None,
+    aws_secret_string: str | None = None,
     wave_wait_seconds: float = 60.0,
     kubectl_bin: str = "kubectl",
     dry_run: bool = True,
@@ -116,10 +119,20 @@ def rotate_secret(
     """Rotate `secret_name` end to end:
 
     1. (optional) write the new value to AWS Secrets Manager
-    2. patch the Kubernetes Secret with the new value
+    2. patch the Kubernetes Secret with the new value(s)
     3. discover dependent Deployments and restart them wave by wave,
        waiting `wave_wait_seconds` between waves so a canary wave has
        time to prove itself before the rest roll
+
+    `new_values` maps every key in the Secret's `data`/`stringData` to
+    its new value -- e.g. {"username": "...", "password": "..."} for a
+    multi-key credential secret, or {"value": "..."} for a single-value
+    one. An earlier version of this function hardcoded a single "value"
+    key, which silently broke for any secret with more than one key;
+    this is why `find_dependent_deployments` matches on the whole
+    Secret by name rather than by key, and why callers must be explicit
+    about which key(s) they're rotating instead of this function
+    guessing.
 
     Requires boto3 (lazy import, only if `aws_secret_id` is given) and a
     working kubeconfig. Set dry_run=False to actually execute; the plan
@@ -137,14 +150,15 @@ def rotate_secret(
         import boto3  # noqa: local import by design, see module docstring
 
         boto3.client("secretsmanager").put_secret_value(
-            SecretId=aws_secret_id, SecretString=new_value
+            SecretId=aws_secret_id,
+            SecretString=aws_secret_string if aws_secret_string is not None else json.dumps(new_values),
         )
 
     _run(
         kubectl_bin, "patch", "secret", secret_name,
         "-n", namespace,
         "--type=merge",
-        "-p", json.dumps({"stringData": {"value": new_value}}),
+        "-p", json.dumps({"stringData": new_values}),
     )
 
     for i, wave in enumerate(plan.waves):

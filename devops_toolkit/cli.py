@@ -105,10 +105,22 @@ def _cmd_drift_check(args: argparse.Namespace) -> int:
 
 
 def _cmd_rotate_secret(args: argparse.Namespace) -> int:
+    # --set KEY=VALUE (repeatable) covers multi-key secrets; --new-value
+    # is shorthand for the common single-value case and maps to the
+    # conventional "value" key. rotate_secret() itself takes a plain
+    # {key: value} map -- see its docstring for why it no longer
+    # hardcodes a single key.
+    new_values = _parse_selector(",".join(args.key_values)) if args.key_values else {}
+    if args.new_value is not None:
+        new_values.setdefault("value", args.new_value)
+    if not new_values:
+        parser_error = "rotate-secret requires --new-value or at least one --set KEY=VALUE"
+        raise SystemExit(parser_error)
+
     plan = rotate_secret(
         args.secret_name,
         args.namespace,
-        new_value=args.new_value,
+        new_values=new_values,
         aws_secret_id=args.aws_secret_id,
         dry_run=not args.execute,
     )
@@ -177,7 +189,15 @@ def build_parser() -> argparse.ArgumentParser:
     rs = sub.add_parser("rotate-secret", help="Plan (and optionally execute) a wave-based secret rotation")
     rs.add_argument("secret_name")
     rs.add_argument("namespace")
-    rs.add_argument("--new-value", default="")
+    rs.add_argument("--new-value", default=None, help="Shorthand for --set value=<NEW_VALUE>, for single-value secrets")
+    rs.add_argument(
+        "--set",
+        dest="key_values",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Set a specific key's new value; repeatable for multi-key secrets, e.g. --set username=svc --set password=hunter2",
+    )
     rs.add_argument("--aws-secret-id", default=None, help="Also rotate this value in AWS Secrets Manager")
     rs.add_argument("--execute", action="store_true", help="Actually rotate and restart; default is dry-run")
     rs.set_defaults(func=_cmd_rotate_secret)
