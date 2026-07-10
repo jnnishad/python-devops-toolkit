@@ -1,7 +1,7 @@
 [project]
 name = "devops-toolkit"
-version = "0.1.0"
-description = "CLI toolkit for cloud resource cleanup, service health checks, and Kubernetes deployment validation"
+version = "0.2.0"
+description = "CLI toolkit for cloud resource cleanup, concurrent health probing, PDB-safe node draining, GitOps drift detection, cost anomaly detection, secret rotation, and guardrailed chaos experiments"
 authors = [{ name = "Jaihind Nishad", email = "jaihindnishad@gmail.com" }]
 requires-python = ">=3.9"
 readme = "README.md"
