@@ -91,7 +91,7 @@ def fetch_daily_costs_aws(
     trailing `days` days. Requires boto3 and Cost Explorer access;
     imported lazily so the module loads without boto3 installed.
     """
-    import boto3  # noqa: local import by design, see module docstring
+    import boto3  # local import by design, see module docstring
 
     session = boto3.Session(profile_name=profile) if profile else boto3.Session()
     client = session.client("ce")

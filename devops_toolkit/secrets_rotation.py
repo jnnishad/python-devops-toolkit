@@ -147,7 +147,7 @@ def rotate_secret(
         return plan
 
     if aws_secret_id:
-        import boto3  # noqa: local import by design, see module docstring
+        import boto3  # local import by design, see module docstring
 
         boto3.client("secretsmanager").put_secret_value(
             SecretId=aws_secret_id,
